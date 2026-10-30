@@ -270,3 +270,6 @@ table.paces, table.kv { width: 100%; border-collapse: collapse; margin: 12px 0; 
 table.paces td, table.kv td { padding: 8px 0; border-bottom: 1px solid var(--line); }
 table.paces td:last-child, table.kv td:last-child { text-align: right; font-weight: 600; }
 .ref p { font-size: 14px; }
+.card.watch { display: block; border-color: var(--long); }
+.howto { padding-left: 18px; }
+.howto li { margin: 6px 0; }

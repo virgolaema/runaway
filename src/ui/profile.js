@@ -2,6 +2,7 @@ import { HM_KM } from '../lib/plan.js';
 import { duration, km, esc, dateShort, DOW_LONG, dow } from '../lib/format.js';
 import { hrMax, hrRange, ZONE_LABEL } from '../lib/workout.js';
 import { restartOnboarding } from './onboarding.js';
+import { availability, connect, openSettings, isNative } from '../lib/health.js';
 
 const LEVEL_LABEL = { principiante: 'Principiante', intermedio: 'Intermedio', avanzato: 'Avanzato' };
 
@@ -31,6 +32,9 @@ export const profileView = {
           <table class="paces">${['E', 'HM', 'T', 'I'].map((z) => { const r = hrRange(z, p.age); return `<tr><td>${ZONE_LABEL[z]}</td><td>${r[0]}–${r[1]} bpm</td></tr>`; }).join('')}</table>
         </div>` : ''}
 
+      <h3>Orologio</h3>
+      <div class="card soft">${watchSection(ctx.state.watch)}</div>
+
       <h3>Storico</h3>
       <div class="card soft">${(history || []).slice(-8).reverse().map((h) => `<div class="row between small"><span>${esc(h.event)}</span><span class="muted">${dateShort(h.date)}</span></div>`).join('') || '<span class="muted small">—</span>'}</div>
 
@@ -44,11 +48,68 @@ export const profileView = {
       restartOnboarding();
       ctx.go('onboarding');
     });
+    bindWatch(root, ctx);
     root.querySelector('[data-act=reset]').addEventListener('click', () => {
       if (confirm('Cancellare profilo, piano e allenamenti registrati?')) ctx.reset();
     });
   },
 };
+
+function watchSection(w) {
+  if (!isNative()) return '<p class="muted small">La sincronizzazione con l\'orologio è disponibile nell\'app Android.</p>';
+  if (!w?.enabled) {
+    return `
+      <p><b>Garmin</b> (e altri orologi: Polar, Coros, Samsung, Pixel Watch) tramite Health Connect.</p>
+      <ol class="small muted howto">
+        <li>Nell'app <b>Garmin Connect</b>: Altro → Impostazioni → <b>Health Connect</b> → attiva la condivisione delle attività.</li>
+        <li>Qui sotto tocca <b>Collega</b> e consenti a Runaway di leggere allenamenti, distanza e frequenza cardiaca.</li>
+      </ol>
+      <p class="small muted">Le corse sincronizzate dall'orologio vengono registrate in automatico sull'allenamento del giorno (o di ±1 giorno). Tu aggiungi solo la fatica percepita.</p>
+      <button class="btn primary block" data-act="watch-connect">Collega</button>
+      <div id="watch-msg" class="warn small"></div>`;
+  }
+  return `
+    <div class="row between"><span><b>Collegato</b> via Health Connect</span><span class="ok">●</span></div>
+    <p class="small muted">${w.lastSync ? `Ultima sincronizzazione: ${new Date(w.lastSync).toLocaleString('it-IT', { dateStyle: 'short', timeStyle: 'short' })}` : 'Mai sincronizzato'}</p>
+    ${w.error ? `<p class="warn small">${esc(w.error)}</p>` : ''}
+    <div id="watch-msg" class="small muted"></div>
+    <button class="btn block" data-act="watch-sync">Sincronizza ora</button>
+    <button class="btn ghost block" data-act="watch-settings">Permessi Health Connect</button>
+    <button class="btn ghost block" data-act="watch-off">Scollega</button>`;
+}
+
+function bindWatch(root, ctx) {
+  const msg = (t) => { const el = root.querySelector('#watch-msg'); if (el) el.textContent = t; };
+  root.querySelector('[data-act=watch-connect]')?.addEventListener('click', async () => {
+    const a = await availability();
+    if (!a.available) {
+      msg('Health Connect non è disponibile: installalo dal Play Store (Android 13 o precedenti) o aggiornalo.');
+      openSettings();
+      return;
+    }
+    try {
+      if (!(await connect())) { msg('Permesso per gli allenamenti non concesso.'); return; }
+      ctx.update((s) => { s.watch = { enabled: true, lastSync: null }; s.history.push({ date: toISOday(), event: 'Orologio collegato' }); });
+      const n = await ctx.syncWatch();
+      ctx.render();
+      msg(n ? `${n} corse importate.` : 'Nessuna corsa nuova trovata.');
+    } catch (e) {
+      msg(e.message);
+    }
+  });
+  root.querySelector('[data-act=watch-sync]')?.addEventListener('click', async (e) => {
+    e.target.disabled = true;
+    msg('Sincronizzazione…');
+    const n = await ctx.syncWatch();
+    ctx.render();
+    const el = document.querySelector('#watch-msg');
+    if (el) el.textContent = n ? `${n} corse importate.` : 'Nessuna corsa nuova.';
+  });
+  root.querySelector('[data-act=watch-settings]')?.addEventListener('click', () => openSettings());
+  root.querySelector('[data-act=watch-off]')?.addEventListener('click', () => ctx.update((s) => { s.watch = { enabled: false }; }));
+}
+
+const toISOday = () => new Date().toISOString().slice(0, 10);
 
 const REFS = [
   ['Progressione del lungo', 'Nessuna corsa supera del 10% la più lunga dei 30 giorni precedenti. In 5.200 runner seguiti 18 mesi, i “picchi” di distanza in una singola uscita erano associati a più infortuni, mentre il rapporto carico acuto/cronico e la variazione settimanale non lo erano.', 'Frandsen JSB et al., Br J Sports Med 2025'],

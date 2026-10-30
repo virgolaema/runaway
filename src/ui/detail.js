@@ -1,7 +1,7 @@
 import { PHASE_LABEL } from '../lib/plan.js';
 import { zonePace, hrRange, ZONE_LABEL, ZONE_RPE, estimateSeconds, segmentTitle, TYPE_LABEL } from '../lib/workout.js';
 import { km, minutes, paceRange, esc, dateLong, parseTime, duration, pace } from '../lib/format.js';
-import { findSession, status, today, typeIcon } from './common.js';
+import { findSession, status, today, typeIcon, currentWeek } from './common.js';
 
 function secs(sec) {
   const m = Math.floor(sec / 60), r = sec % 60;
@@ -48,7 +48,9 @@ export const detailView = {
       ${l?.done ? `
         <div class="card ok-card">
           <b>Completato</b>
-          <div class="muted small">${l.km ? km(l.km) + ' km' : ''}${l.timeSec ? ' · ' + duration(l.timeSec) : ''}${l.km && l.timeSec ? ' · ' + pace(l.timeSec / l.km) + '/km' : ''}${l.rpe ? ' · RPE ' + l.rpe : ''}${l.pain ? ' · dolore segnalato' : ''}</div>
+          <div class="muted small">${l.km ? km(l.km) + ' km' : ''}${l.timeSec ? ' · ' + duration(l.timeSec) : ''}${l.km && l.timeSec ? ' · ' + pace(l.timeSec / l.km) + '/km' : ''}${l.avgHr ? ' · FC media ' + l.avgHr : ''}${l.rpe ? ' · RPE ' + l.rpe : ''}${l.pain ? ' · dolore segnalato' : ''}</div>
+          ${l.extId ? `<div class="muted small">Importato da ${esc(l.source)}</div>` : ''}
+          ${l.needsRpe ? `<a class="btn block" href="#/log/${encodeURIComponent(s.id)}">Aggiungi fatica percepita</a>` : ''}
           ${l.notes ? `<p>${esc(l.notes)}</p>` : ''}
         </div>` : ''}
       <p class="notes">${esc(s.notes)}</p>
@@ -75,10 +77,18 @@ export const detailView = {
   },
 };
 
+// Unplanned run imported from the watch, shown with the same log form.
+function extraSession(state, id) {
+  const l = state.logs[id];
+  if (!l?.extra) return null;
+  const week = currentWeek(state.plan, l.date);
+  return { week, session: { id, extra: true, type: 'easy', title: 'Corsa extra', date: l.date, km: l.km, steps: [{ kind: 'run', km: l.km, zone: 'E' }] } };
+}
+
 export const logView = {
   html(ctx, id) {
     const { plan, logs } = ctx.state;
-    const found = findSession(plan, id);
+    const found = findSession(plan, id) || extraSession(ctx.state, id);
     if (!found) return '<p>Allenamento non trovato.</p>';
     const { session: s, week } = found;
     const l = logs[id] || ctx.state.pendingRun?.[id] || {};
@@ -113,11 +123,13 @@ export const logView = {
     f.addEventListener('submit', (e) => {
       e.preventDefault();
       const fd = new FormData(f);
-      const found = findSession(ctx.state.plan, id);
+      const found = findSession(ctx.state.plan, id) || extraSession(ctx.state, id);
       const extra = ctx.state.pendingRun?.[id] || {};
       ctx.silentUpdate((s) => {
         s.logs[id] = {
+          ...s.logs[id],
           ...extra,
+          needsRpe: false,
           done: true,
           date: found.session.date <= today() ? found.session.date : today(),
           km: Number(fd.get('km')) || 0,
@@ -128,7 +140,8 @@ export const logView = {
         };
         if (s.pendingRun) delete s.pendingRun[id];
       });
-      ctx.replaceRoute('w', id);
+      if (found.session.extra) ctx.back();
+      else ctx.replaceRoute('w', id);
     });
   },
 };

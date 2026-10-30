@@ -2,6 +2,9 @@ import './styles.css';
 import { Capacitor } from '@capacitor/core';
 import { App } from '@capacitor/app';
 import { load, save, reset } from './lib/store.js';
+import { readRuns, isAuthorized } from './lib/health.js';
+import { matchWorkouts } from './lib/sync.js';
+import { addDays, fromISO, toISO } from './lib/plan.js';
 import { onboardingView } from './ui/onboarding.js';
 import { todayView } from './ui/today.js';
 import { planView } from './ui/planview.js';
@@ -67,7 +70,42 @@ const ctx = {
     replaceRoute('onboarding');
   },
   render: () => render(),
+  syncWatch: () => syncWatch(),
 };
+
+// Import runs recorded by the watch (Garmin Connect → Health Connect).
+let syncing = null;
+async function syncWatch() {
+  if (!state.plan || !state.watch?.enabled) return 0;
+  if (syncing) return syncing;
+  syncing = (async () => {
+    try {
+      if (!(await isAuthorized())) {
+        state.watch.error = 'Permessi Health Connect revocati';
+        save(state);
+        return 0;
+      }
+      const t = toISO(new Date());
+      const fromIso = [state.plan.start, addDays(t, -29)].sort().pop();
+      const runs = await readRuns(fromISO(fromIso), new Date());
+      const fresh = matchWorkouts(state.plan, state.logs, runs);
+      const n = Object.keys(fresh).length;
+      Object.assign(state.logs, fresh);
+      state.watch.lastSync = new Date().toISOString();
+      state.watch.error = null;
+      save(state);
+      if (n) render();
+      return n;
+    } catch (e) {
+      state.watch.error = e.message;
+      save(state);
+      return 0;
+    } finally {
+      syncing = null;
+    }
+  })();
+  return syncing;
+}
 
 let current = null;
 function render() {
@@ -94,6 +132,9 @@ function tabbar(active) {
 window.addEventListener('hashchange', render);
 
 if (Capacitor.isNativePlatform()) {
+  App.addListener('resume', () => {
+    if (parseRoute().name !== 'run') syncWatch();
+  });
   App.addListener('backButton', () => {
     const { name } = parseRoute();
     if (['today', 'onboarding', ''].includes(name) || (!state.plan && name === 'onboarding')) App.exitApp();
@@ -104,3 +145,4 @@ if (Capacitor.isNativePlatform()) {
 
 if (!location.hash) history.replaceState(null, '', state.plan ? '#/today' : '#/onboarding');
 render();
+syncWatch();

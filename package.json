@@ -25,7 +25,8 @@
     "@capacitor/app": "^8.1.2",
     "@capacitor/core": "^8.6.0",
     "@capacitor/geolocation": "^8.2.4",
-    "@capacitor/haptics": "^8.0.2"
+    "@capacitor/haptics": "^8.0.2",
+    "@capgo/capacitor-health": "^8.11.13"
   },
   "devDependencies": {
     "@capacitor/cli": "^8.6.0",

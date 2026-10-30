@@ -88,3 +88,36 @@ describe('adaptation', () => {
     void t;
   });
 });
+
+describe('watch sync', async () => {
+  const { matchWorkouts } = await import('../src/lib/sync.js');
+  const plan = generatePlan(profiles.intermedio);
+  const runsList = plan.weeks[0].sessions.filter((s) => s.type !== 'strength');
+  const at = (date, h = 7) => new Date(`${date}T0${h}:30:00`).toISOString();
+
+  it('matches a run to the planned session of the same day', () => {
+    const s = runsList[0];
+    const out = matchWorkouts(plan, {}, [{ id: 'g1', start: at(s.date), durationSec: 1800, meters: 5230, avgHr: 141.6, source: 'Garmin' }]);
+    expect(out[s.id]).toMatchObject({ done: true, km: 5.23, timeSec: 1800, avgHr: 142, extId: 'g1', needsRpe: true });
+  });
+
+  it('matches a run moved by one day and ignores already imported runs', () => {
+    const s = runsList[0]; // Tuesday; Wednesday has no session
+    const w = { id: 'g2', start: at(addDays(s.date, 1)), durationSec: 2400, meters: 7000 };
+    const out = matchWorkouts(plan, {}, [w]);
+    expect(Object.keys(out)).toEqual([s.id]);
+    expect(matchWorkouts(plan, out, [w])).toEqual({});
+  });
+
+  it('enriches a manual log instead of double counting', () => {
+    const s = runsList[0];
+    const logs = { [s.id]: { done: true, km: 5, timeSec: 1700, rpe: 4, date: s.date } };
+    const out = matchWorkouts(plan, logs, [{ id: 'g3', start: at(s.date, 8), durationSec: 1750, meters: 5100 }]);
+    expect(out[s.id]).toMatchObject({ rpe: 4, km: 5.1, extId: 'g3' });
+  });
+
+  it('keeps unplanned runs as extra', () => {
+    const out = matchWorkouts(plan, {}, [{ id: 'g4', start: at('2026-10-01'), durationSec: 1200, meters: 3000 }]);
+    expect(out['extra-g4']).toMatchObject({ extra: true, km: 3 });
+  });
+});

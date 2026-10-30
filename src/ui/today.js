@@ -1,7 +1,8 @@
-import { adaptationSignal, replan, daysBetween, PHASE_LABEL, mondayOf } from '../lib/plan.js';
+import { adaptationSignal, replan, daysBetween, PHASE_LABEL, mondayOf, addDays } from '../lib/plan.js';
 import { estimateSeconds, TYPE_LABEL } from '../lib/workout.js';
 import { km, minutes, esc, dateLong, dow } from '../lib/format.js';
-import { today, currentWeek, status, sessionRow, doneKm, allSessions, typeIcon } from './common.js';
+import { today, currentWeek, status, sessionRow, doneKm, allSessions, typeIcon, extraRow } from './common.js';
+import { extraRuns } from '../lib/sync.js';
 
 export const todayView = {
   html(ctx) {
@@ -15,6 +16,8 @@ export const todayView = {
     const signal = adaptationSignal(plan, logs, t);
     const dismissed = ctx.state.dismissedSignal === mondayOf(t);
     const done = doneKm(week, logs);
+    const toRate = Object.entries(logs).filter(([, l]) => l.needsRpe && l.date >= addDays(t, -7)).map(([id]) => id);
+    const extras = extraRuns(logs, week.start, addDays(week.start, 6));
 
     const hero = (s, label) => {
       const st = status(s, logs, t);
@@ -50,6 +53,12 @@ export const todayView = {
           </div>
         </div>` : ''}
 
+      ${toRate.length ? `
+        <a class="card watch" href="#/log/${encodeURIComponent(toRate[0])}">
+          <b>${toRate.length === 1 ? 'Corsa importata dall\'orologio' : `${toRate.length} corse importate dall'orologio`}</b>
+          <p class="muted small">Aggiungi la fatica percepita (RPE) e se hai sentito dolore: servono ad adattare il piano. ›</p>
+        </a>` : ''}
+
       ${todays.length ? todays.map((s) => hero({ ...s, week }, s.type === 'strength' ? 'Oggi · Forza' : 'Oggi')).join('') : `
         <div class="card soft rest">
           <h2>Riposo</h2>
@@ -71,7 +80,7 @@ export const todayView = {
             </div>`;
           }).join('')}
         </div>
-        <div class="list">${week.sessions.map((s) => sessionRow(s, week, logs)).join('')}</div>
+        <div class="list">${week.sessions.map((s) => sessionRow(s, week, logs)).join('')}${extras.map(extraRow).join('')}</div>
       </section>`;
   },
   bind(root, ctx) {

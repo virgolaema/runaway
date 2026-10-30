@@ -1,4 +1,5 @@
-import { toISO } from '../lib/plan.js';
+import { toISO, addDays, fromISO } from '../lib/plan.js';
+import { extraRuns } from '../lib/sync.js';
 import { estimateSeconds, TYPE_LABEL } from '../lib/workout.js';
 import { km, minutes, esc, dow, dateShort } from '../lib/format.js';
 
@@ -61,5 +62,16 @@ export function sessionRow(s, week, logs, { showDate = true } = {}) {
 }
 
 export function doneKm(week, logs) {
-  return week.sessions.reduce((s, x) => s + (logs[x.id]?.done && x.type !== 'strength' ? logs[x.id].km || 0 : 0), 0);
+  const planned = week.sessions.reduce((s, x) => s + (logs[x.id]?.done && x.type !== 'strength' ? logs[x.id].km || 0 : 0), 0);
+  return planned + extraRuns(logs, week.start, addDays(week.start, 6)).reduce((s, l) => s + (l.km || 0), 0);
+}
+
+export function extraRow(l) {
+  return `
+    <a class="session t-easy st-done" href="#/log/${encodeURIComponent(l.id)}">
+      <span class="ico">${typeIcon('easy')}</span>
+      <span class="when"><b>${dow((fromISO(l.date).getDay() + 6) % 7)}</b><small>${dateShort(l.date)}</small></span>
+      <span class="what"><b>Corsa extra</b><small>${esc(l.source)} · ${km(l.km)} km${l.timeSec ? ' · ' + minutes(l.timeSec) : ''}</small></span>
+      <span class="state">✓</span>
+    </a>`;
 }
