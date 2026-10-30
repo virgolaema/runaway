@@ -1,0 +1,8 @@
+{
+  "appId": "com.virgolaema.runaway",
+  "appName": "Runaway",
+  "webDir": "dist",
+  "android": {
+    "backgroundColor": "#0f1115"
+  }
+}
