@@ -6,6 +6,10 @@ App Android per preparare una mezza maratona: crea un piano personalizzato, guid
 
 Ultima versione: [Releases](https://github.com/virgolaema/runaway/releases/latest) → scarica `Runaway-x.y.z.apk` sul telefono e aprilo. Android chiede di consentire l'installazione da origini sconosciute. Le versioni successive si installano sopra la precedente mantenendo i dati.
 
+## iPhone
+
+Apri https://virgolaema.github.io/runaway/ in Safari → Condividi → **Aggiungi alla schermata Home**. Funziona offline; la sincronizzazione con l'orologio è solo su Android.
+
 ## Orologio (Garmin)
 
 Le corse registrate con l'orologio arrivano in Runaway tramite **Health Connect**: in Garmin Connect attiva Impostazioni → Health Connect, poi in Runaway Profilo → Orologio → Collega. Ogni corsa viene associata all'allenamento del giorno (±1 giorno) con distanza, tempo e FC media; quelle non previste contano come corse extra. Funziona con qualsiasi app che scrive le corse in Health Connect (Polar, Coros, Samsung, Pixel Watch…).

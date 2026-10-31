@@ -1,4 +1,4 @@
-name: Android APK
+name: Build (Android + web)
 
 on:
   push:
@@ -22,6 +22,14 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run build
+      - name: Publish web/iPhone version (GitHub Pages)
+        if: github.ref == 'refs/heads/main'
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./dist
+          force_orphan: true
+
       - run: npx cap sync android
 
       - uses: actions/setup-java@v4
