@@ -56,7 +56,7 @@ export const profileView = {
 };
 
 function watchSection(w) {
-  if (!isNative()) return '<p class="muted small">La sincronizzazione con l\'orologio è disponibile nell\'app Android.</p>';
+  if (!isNative()) return '<p class="muted small">La sincronizzazione automatica con l\'orologio è disponibile solo nell\'app Android. Qui registra le corse con “Registra manualmente”.</p>';
   if (!w?.enabled) {
     return `
       <p><b>Garmin</b> (e altri orologi: Polar, Coros, Samsung, Pixel Watch) tramite Health Connect.</p>

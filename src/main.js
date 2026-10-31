@@ -146,3 +146,8 @@ if (Capacitor.isNativePlatform()) {
 if (!location.hash) history.replaceState(null, '', state.plan ? '#/today' : '#/onboarding');
 render();
 syncWatch();
+
+// Web / iPhone (home screen app): offline cache.
+if (!Capacitor.isNativePlatform() && import.meta.env.PROD && 'serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js').catch(() => {});
+}
