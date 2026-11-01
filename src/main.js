@@ -4,6 +4,7 @@ import { App } from '@capacitor/app';
 import { load, save, reset } from './lib/store.js';
 import { readRuns, isAuthorized } from './lib/health.js';
 import { matchWorkouts } from './lib/sync.js';
+import * as strava from './lib/strava.js';
 import { addDays, fromISO, toISO } from './lib/plan.js';
 import { onboardingView } from './ui/onboarding.js';
 import { todayView } from './ui/today.js';
@@ -11,7 +12,7 @@ import { planView } from './ui/planview.js';
 import { detailView, logView } from './ui/detail.js';
 import { runView, leaveRun } from './ui/run.js';
 import { progressView, fitnessView } from './ui/progress.js';
-import { profileView, scienceView } from './ui/profile.js';
+import { profileView, scienceView, stravaLinkView } from './ui/profile.js';
 
 const root = document.getElementById('app');
 let state = load();
@@ -27,6 +28,7 @@ const VIEWS = {
   fitness: fitnessView,
   profile: profileView,
   science: scienceView,
+  strava: stravaLinkView,
 };
 const TABS = [
   ['today', 'Oggi', '<path d="M12 3v2m0 14v2M3 12h2m14 0h2M6 6l1.4 1.4m9.2 9.2L18 18M6 18l1.4-1.4m9.2-9.2L18 6"/><circle cx="12" cy="12" r="4"/>'],
@@ -71,11 +73,39 @@ const ctx = {
   },
   render: () => render(),
   syncWatch: () => syncWatch(),
+  get stravaPending() { return stravaPending; },
 };
+
+// Strava OAuth callback (web/iPhone). If this context has no plan (e.g. Safari instead of the
+// home screen app, which has separate storage) the connection is shown as a code to paste.
+let stravaPending = null;
+async function handleStravaCallback() {
+  const cb = strava.callbackCode();
+  if (!cb) return;
+  history.replaceState(null, '', location.pathname + (state.plan ? '#/profile' : '#/strava'));
+  const proxy = cb.proxy;
+  try {
+    if (cb.error) throw new Error(cb.error);
+    if (!proxy) throw new Error('Indirizzo del server Strava mancante');
+    const conn = await strava.exchange(proxy, cb.code);
+    if (state.plan) {
+      state.strava = conn;
+      state.history.push({ date: toISO(new Date()), event: 'Strava collegato' });
+      save(state);
+      await syncWatch();
+    } else {
+      stravaPending = { code: strava.toCode(conn) };
+    }
+  } catch (e) {
+    stravaPending = { error: e.message };
+  }
+  render();
+}
 
 // Import runs recorded by the watch (Garmin Connect → Health Connect).
 let syncing = null;
 async function syncWatch() {
+  if (state.plan && state.strava?.refresh_token) return syncStrava();
   if (!state.plan || !state.watch?.enabled) return 0;
   if (syncing) return syncing;
   syncing = (async () => {
@@ -88,9 +118,7 @@ async function syncWatch() {
       const t = toISO(new Date());
       const fromIso = [state.plan.start, addDays(t, -29)].sort().pop();
       const runs = await readRuns(fromISO(fromIso), new Date());
-      const fresh = matchWorkouts(state.plan, state.logs, runs);
-      const n = Object.keys(fresh).length;
-      Object.assign(state.logs, fresh);
+      const n = mergeRuns(runs);
       state.watch.lastSync = new Date().toISOString();
       state.watch.error = null;
       save(state);
@@ -107,10 +135,39 @@ async function syncWatch() {
   return syncing;
 }
 
+function mergeRuns(runs) {
+  const fresh = matchWorkouts(state.plan, state.logs, runs);
+  Object.assign(state.logs, fresh);
+  return Object.keys(fresh).length;
+}
+
+async function syncStrava() {
+  if (syncing) return syncing;
+  syncing = (async () => {
+    const conn = state.strava;
+    try {
+      const fromIso = [state.plan.start, addDays(toISO(new Date()), -29)].sort().pop();
+      const n = mergeRuns(await strava.readRuns(conn, fromISO(fromIso)));
+      conn.lastSync = new Date().toISOString();
+      conn.error = null;
+      save(state);
+      if (n) render();
+      return n;
+    } catch (e) {
+      conn.error = e.message;
+      save(state);
+      return 0;
+    } finally {
+      syncing = null;
+    }
+  })();
+  return syncing;
+}
+
 let current = null;
 function render() {
   let { name, param } = parseRoute();
-  if (!state.plan && name !== 'onboarding' && name !== 'science') name = 'onboarding';
+  if (!state.plan && !['onboarding', 'science', 'strava'].includes(name)) name = 'onboarding';
   if (!VIEWS[name]) name = 'today';
   if (current && current.name === 'run' && name !== 'run') leaveRun();
   current = { name, param };
@@ -145,7 +202,13 @@ if (Capacitor.isNativePlatform()) {
 
 if (!location.hash) history.replaceState(null, '', state.plan ? '#/today' : '#/onboarding');
 render();
-syncWatch();
+if (strava.callbackCode()) handleStravaCallback();
+else syncWatch();
+if (!Capacitor.isNativePlatform()) {
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && parseRoute().name !== 'run') syncWatch();
+  });
+}
 
 // Web / iPhone (home screen app): offline cache.
 if (!Capacitor.isNativePlatform() && import.meta.env.PROD && 'serviceWorker' in navigator) {

@@ -8,7 +8,7 @@ Ultima versione: [Releases](https://github.com/virgolaema/runaway/releases/lates
 
 ## iPhone
 
-Apri https://virgolaema.github.io/runaway/ in Safari → Condividi → **Aggiungi alla schermata Home**. Funziona offline; la sincronizzazione con l'orologio è solo su Android.
+Apri https://virgolaema.github.io/runaway/ in Safari → Condividi → **Aggiungi alla schermata Home**. Funziona offline. Per sincronizzare il Garmin su iPhone si passa da Strava: vedi [strava-worker/README.md](strava-worker/README.md).
 
 ## Orologio (Garmin)
 

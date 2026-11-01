@@ -3,6 +3,7 @@ import { duration, km, esc, dateShort, DOW_LONG, dow } from '../lib/format.js';
 import { hrMax, hrRange, ZONE_LABEL } from '../lib/workout.js';
 import { restartOnboarding } from './onboarding.js';
 import { availability, connect, openSettings, isNative } from '../lib/health.js';
+import * as strava from '../lib/strava.js';
 
 const LEVEL_LABEL = { principiante: 'Principiante', intermedio: 'Intermedio', avanzato: 'Avanzato' };
 
@@ -33,7 +34,7 @@ export const profileView = {
         </div>` : ''}
 
       <h3>Orologio</h3>
-      <div class="card soft">${watchSection(ctx.state.watch)}</div>
+      <div class="card soft">${isNative() ? watchSection(ctx.state.watch) : stravaSection(ctx.state)}</div>
 
       <h3>Storico</h3>
       <div class="card soft">${(history || []).slice(-8).reverse().map((h) => `<div class="row between small"><span>${esc(h.event)}</span><span class="muted">${dateShort(h.date)}</span></div>`).join('') || '<span class="muted small">—</span>'}</div>
@@ -49,6 +50,7 @@ export const profileView = {
       ctx.go('onboarding');
     });
     bindWatch(root, ctx);
+    bindStrava(root, ctx);
     root.querySelector('[data-act=reset]').addEventListener('click', () => {
       if (confirm('Cancellare profilo, piano e allenamenti registrati?')) ctx.reset();
     });
@@ -77,6 +79,83 @@ function watchSection(w) {
     <button class="btn ghost block" data-act="watch-settings">Permessi Health Connect</button>
     <button class="btn ghost block" data-act="watch-off">Scollega</button>`;
 }
+
+const GUIDE = 'https://github.com/virgolaema/runaway/blob/main/strava-worker/README.md';
+
+function stravaSection(st) {
+  const c = st.strava;
+  if (c?.refresh_token) {
+    return `
+      <div class="row between"><span><b>Strava collegato</b>${c.athlete ? ' · ' + esc(c.athlete) : ''}</span><span class="ok">●</span></div>
+      <p class="small muted">${c.lastSync ? `Ultima sincronizzazione: ${new Date(c.lastSync).toLocaleString('it-IT', { dateStyle: 'short', timeStyle: 'short' })}` : 'Mai sincronizzato'}</p>
+      ${c.error ? `<p class="warn small">${esc(c.error)}</p>` : ''}
+      <div id="strava-msg" class="small muted"></div>
+      <button class="btn block" data-act="strava-sync">Sincronizza ora</button>
+      <button class="btn ghost block" data-act="strava-off">Scollega</button>`;
+  }
+  return `
+    <p><b>Garmin via Strava.</b> Le corse dell'orologio arrivano su Strava da sole; Runaway le legge da lì e le registra sull'allenamento del giorno.</p>
+    <p class="small muted">Serve una configurazione una tantum (10 minuti): un'app API su Strava e un piccolo server gratuito su Cloudflare. <a class="link inline" href="${GUIDE}" target="_blank" rel="noopener">Guida passo passo</a></p>
+    <label class="field">Indirizzo del server (Cloudflare Worker)
+      <input id="strava-proxy" type="url" inputmode="url" placeholder="https://runaway-strava.nome.workers.dev" value="${esc(st.stravaProxy || '')}"/></label>
+    <button class="btn primary block" data-act="strava-connect">Collega Strava</button>
+    <details class="small"><summary class="muted">Ho un codice di collegamento</summary>
+      <textarea id="strava-code" rows="3" class="code-in" placeholder="Incolla qui il codice"></textarea>
+      <button class="btn block" data-act="strava-paste">Usa il codice</button>
+    </details>
+    <div id="strava-msg" class="warn small"></div>`;
+}
+
+function bindStrava(root, ctx) {
+  const msg = (t) => { const el = document.querySelector('#strava-msg'); if (el) el.textContent = t; };
+  root.querySelector('[data-act=strava-connect]')?.addEventListener('click', async () => {
+    const proxy = root.querySelector('#strava-proxy').value.trim();
+    if (!/^https:\/\//.test(proxy)) { msg('Inserisci l\'indirizzo https del tuo Worker.'); return; }
+    ctx.silentUpdate((s) => { s.stravaProxy = proxy; });
+    msg('');
+    try { await strava.startAuth(proxy); } catch (e) { msg(`Server non raggiungibile: ${e.message}`); }
+  });
+  root.querySelector('[data-act=strava-paste]')?.addEventListener('click', async () => {
+    try {
+      const conn = strava.fromCode(root.querySelector('#strava-code').value);
+      ctx.update((s) => { s.strava = conn; s.history.push({ date: toISOday(), event: 'Strava collegato' }); });
+      const n = await ctx.syncWatch();
+      ctx.render();
+      msg(n ? `${n} corse importate.` : 'Collegato.');
+    } catch (e) { msg(e.message); }
+  });
+  root.querySelector('[data-act=strava-sync]')?.addEventListener('click', async (e) => {
+    e.target.disabled = true;
+    msg('Sincronizzazione…');
+    const n = await ctx.syncWatch();
+    ctx.render();
+    msg(n ? `${n} corse importate.` : ctx.state.strava?.error || 'Nessuna corsa nuova.');
+  });
+  root.querySelector('[data-act=strava-off]')?.addEventListener('click', () => {
+    if (confirm('Scollegare Strava?')) ctx.update((s) => { delete s.strava; });
+  });
+}
+
+export const stravaLinkView = {
+  html(ctx) {
+    const p = ctx.stravaPending;
+    if (!p) return '<p class="muted">Nessun collegamento in corso.</p><a class="btn block" href="#/today">Continua</a>';
+    if (p.error) return `<h2>Collegamento non riuscito</h2><p class="warn">${esc(p.error)}</p><a class="btn block" href="#/profile">Torna al profilo</a>`;
+    return `
+      <h2>Strava autorizzato</h2>
+      <p class="muted">Questa pagina si è aperta fuori dall'app installata, che ha una memoria separata. Copia il codice, apri Runaway dalla schermata Home e incollalo in Profilo → Orologio → “Ho un codice di collegamento”.</p>
+      <textarea id="code" rows="5" class="code-in" readonly>${esc(p.code)}</textarea>
+      <button class="btn primary block" data-act="copy">Copia codice</button>
+      <p class="muted small">Il codice dà accesso in sola lettura alle tue attività Strava: non condividerlo.</p>`;
+  },
+  bind(root) {
+    root.querySelector('[data-act=copy]')?.addEventListener('click', async (e) => {
+      const ta = root.querySelector('#code');
+      try { await navigator.clipboard.writeText(ta.value); } catch { ta.select(); document.execCommand('copy'); }
+      e.target.textContent = 'Copiato ✓';
+    });
+  },
+};
 
 function bindWatch(root, ctx) {
   const msg = (t) => { const el = root.querySelector('#watch-msg'); if (el) el.textContent = t; };

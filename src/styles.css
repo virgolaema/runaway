@@ -273,3 +273,6 @@ table.paces td:last-child, table.kv td:last-child { text-align: right; font-weig
 .card.watch { display: block; border-color: var(--long); }
 .howto { padding-left: 18px; }
 .howto li { margin: 6px 0; }
+.link.inline { display: inline; margin: 0; }
+.code-in { width: 100%; margin: 8px 0; padding: 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); color: var(--text); font: 12px/1.4 ui-monospace, monospace; word-break: break-all; }
+details summary { cursor: pointer; margin: 8px 0; }
